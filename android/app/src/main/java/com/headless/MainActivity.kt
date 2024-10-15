@@ -14,6 +14,7 @@ import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnable
 import com.facebook.react.defaults.DefaultReactActivityDelegate
 import android.provider.Settings
 import android.util.Log
+import com.facebook.react.bridge.ReactApplicationContext
 
 class MainActivity : ReactActivity() {
 
@@ -29,23 +30,65 @@ class MainActivity : ReactActivity() {
    */
   override fun createReactActivityDelegate(): ReactActivityDelegate =
       DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
+    lateinit var reactContext: Context
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Check if the SCHEDULE_EXACT_ALARM permission is granted
-            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            if (!alarmManager.canScheduleExactAlarms()) {
-                // Prompt user to allow exact alarms
-                requestExactAlarmPermission()
-            } else {
+
+
+    }
+
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        Log.d("RNModule RequestCode",requestCode.toString())
+        if (requestCode == 1001) {
+            val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+
+            if (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    alarmManager.canScheduleExactAlarms()
+                } else {
+                    TODO("VERSION.SDK_INT < S")
+
+                }
+            ) {
+                // Permission granted, schedule the alarm and notify React Native
                 scheduleExactAlarm()
+            } else {
+                // Permission denied, notify React Native
+                Toast.makeText(this, "Please allow exact alarms to continue", Toast.LENGTH_LONG).show()
             }
-        } else {
-            // For Android versions below Android 12, directly schedule the alarm
-            scheduleExactAlarm()
         }
     }
+
+
+
+    companion object{
+        fun startService(context: Context,activity: MainActivity){
+            activity.reactContext=context
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Check if the SCHEDULE_EXACT_ALARM permission is granted
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                if (!alarmManager.canScheduleExactAlarms()) {
+                    // Prompt user to allow exact alarms
+                    activity.requestExactAlarmPermission()
+                } else {
+                    activity.scheduleExactAlarm()
+                }
+            } else {
+                // For Android versions below Android 12, directly schedule the alarm
+                activity.scheduleExactAlarm()
+            }
+        }
+
+
+
+        fun stopService(context: Context,activity: MainActivity){
+            activity.cancelAlarm(context)
+        }
+    }
+
+
 
     private fun requestExactAlarmPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -84,6 +127,23 @@ class MainActivity : ReactActivity() {
             )
         }
         Log.d("MainActivity", "Initial alarm scheduled")
+    }
+
+    private fun cancelAlarm(context: Context) {
+        val alarmManager = context.getSystemService(ALARM_SERVICE) as AlarmManager
+
+
+        val intent = Intent(this, AlarmReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this,
+            0, // same request code used when scheduling the alarm
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Cancel the alarm
+        alarmManager.cancel(pendingIntent)
+        Log.d("RNModule","Cancel Alarm")
     }
 }
 
